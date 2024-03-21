@@ -35,7 +35,7 @@ async function bootstrap() {
     credentials: true, // Enable credentials (cookies, authorization headers) cross-origin
   })
 
-  await app.listen(port, () => {
+  await app.listen(port, '0.0.0.0', () => {
     Logger.log('Listening at http://localhost:' + port + '/' + GlobalPrefix)
   })
 }
