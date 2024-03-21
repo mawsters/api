@@ -15,6 +15,33 @@
 export const getLimitedArray = <T>(array: T[], limit: number): T[] =>
   array ? Array.from(array.slice(0, Math.min(array.length, limit))) : []
 
+export const getUniqueArray = <T>(array: T[]): T[] => Array.from(new Set(array))
+
+export const getXorArray = <T>(array1: T[], array2: T[]): T[] => {
+  const set1 = new Set(array1)
+  const set2 = new Set(array2)
+
+  // Create a set containing values that are present in only one of the arrays
+  const uniqueValues = new Set([
+    ...array1.filter((value) => !set2.has(value)),
+    ...array2.filter((value) => !set1.has(value)),
+  ])
+  return Array.from(uniqueValues)
+}
+
+export const getXorArrays = <T>(
+  array1: T[],
+  array2: T[],
+): {array1: T[]; array2: T[]} => {
+  const set1 = new Set(array1)
+  const set2 = new Set(array2)
+
+  const uniqueArray1 = array1.filter((value) => !set2.has(value))
+  const uniqueArray2 = array2.filter((value) => !set1.has(value))
+
+  return {array1: uniqueArray1, array2: uniqueArray2}
+}
+
 /**
  * Segment an array into at most a specified number of segments.
  *

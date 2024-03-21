@@ -27,7 +27,7 @@ export class ClerkController {
   @ApiCreatedResponse({
     type: GetUserByUsernameDTO,
   })
-  async getUserById(@Query() params: GetUserByUsernameDTO) {
+  async getUserByUsername(@Query() params: GetUserByUsernameDTO) {
     return this.clerkService.getUserByUsername(params)
   }
 
