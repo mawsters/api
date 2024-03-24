@@ -13,7 +13,7 @@ import {
   ListType,
   ListTypeInfo,
 } from 'src/core/types/shelvd.types'
-import {getUniqueArray, getXorArrays} from 'src/core/utils/helpers'
+import {getUniqueArray, getXorArray, getXorArrays} from 'src/core/utils/helpers'
 import {ShelvdUtils} from 'src/core/utils/shelvd.utils'
 import {z} from 'zod'
 import * as schema from '../drizzle/schema'
@@ -50,6 +50,22 @@ export const GetLists = z.object({
   type: ListType,
 })
 export class GetListsDTO extends createZodDto(GetLists) {}
+
+const KeyChanges = z.object({
+  prev: z.string().array().default([]).transform(getUniqueArray),
+  curr: z.string().array().default([]).transform(getUniqueArray),
+})
+type KeyChanges = z.infer<typeof KeyChanges>
+export const BulkUpdateListByBookKey = z.object({
+  userId: z.string().min(1).trim(),
+
+  bookKey: z.string().min(1).trim(),
+  core: KeyChanges.optional(),
+  created: KeyChanges.optional(),
+})
+export class BulkUpdateListByBookKeyDTO extends createZodDto(
+  BulkUpdateListByBookKey,
+) {}
 
 export const UpdateList = GetCreatedList.extend({
   data: CreateList.omit({
@@ -344,5 +360,77 @@ export class ListService {
         .returning(),
     )
     return lists
+  }
+
+  bulkUpdateListMembership = async (
+    payload: BulkUpdateListByBookKeyDTO,
+  ): Promise<boolean> => {
+    let isChanged = false
+    // exit: no changes
+    if (!payload.core && !payload.created) return isChanged
+
+    // created
+    const updateCreated = async (type: ListType, changes: KeyChanges) => {
+      let isUpdated = false
+      if (!changes) return isUpdated
+
+      const {prev, curr} = changes
+      const isSame = !getXorArray(prev, curr).length
+      if (isSame) return isUpdated
+
+      const query = GetLists.parse({
+        userId: payload.userId,
+        type,
+      })
+
+      const lists = await this.getUserLists(query)
+      if (!lists.length) return isUpdated
+
+      // 1. remove from prev
+      const prevLists = lists.filter(
+        ({key, bookKeys}) =>
+          prev.includes(key) && bookKeys.includes(payload.bookKey),
+      )
+      for (const prevList of prevLists) {
+        const removePayload = UpdateListBooks.parse({
+          userId: payload.userId,
+          key: prevList.key,
+          type,
+          deleteBookKeys: [payload.bookKey],
+        })
+
+        await this.updateListBooks(removePayload)
+      }
+
+      // 2. add from curr
+      const currLists = lists.filter(({key}) => curr.includes(key))
+      for (const currList of currLists) {
+        const addPayload = UpdateListBooks.parse({
+          userId: payload.userId,
+          key: currList.key,
+          type,
+          addBookKeys: [payload.bookKey],
+        })
+
+        await this.updateListBooks(addPayload)
+      }
+
+      isUpdated = true
+      return isUpdated
+    }
+
+    const isCoreUpdated = await updateCreated(
+      ListType.enum.core,
+
+      payload.core,
+    )
+    const isCreatedUpdated = await updateCreated(
+      ListType.enum.created,
+
+      payload.created,
+    )
+
+    isChanged = isCoreUpdated || isCreatedUpdated
+    return isChanged
   }
 }

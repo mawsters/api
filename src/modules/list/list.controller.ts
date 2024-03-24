@@ -26,6 +26,8 @@ import {
   GetUserByUsernameDTO,
 } from '../clerk/clerk.service'
 import {
+  BulkUpdateListByBookKey,
+  BulkUpdateListByBookKeyDTO,
   CreateListDTO,
   DeleteListByTypeDTO,
   GetCreatedList,
@@ -72,6 +74,32 @@ export class ListController {
     // Validate user
     const user = await this.clerkService.getUserByUsername(query)
     if (!user) return DefaultListTypeInfo
+
+    return this.listService.getUserListsKeys(user)
+  }
+
+  @Post('/book')
+  @ApiOperation({
+    summary: 'Bulk insert/delete a book key across all owned lists',
+  })
+  @ApiResponse({
+    status: '2XX',
+    description:
+      'Returns a record keyed by ListType with array of partial ListData info',
+  })
+  async updateListMembership(
+    @Body() body: BulkUpdateListByBookKeyDTO,
+  ): Promise<ListTypeInfo> {
+    // Validate user
+    const user = await this.clerkService.client.users.getUser(body.userId)
+    if (!user) return
+
+    const payload = BulkUpdateListByBookKey.parse({
+      ...body,
+      userId: user.id,
+    })
+    await this.listService.bulkUpdateListMembership(payload)
+    // if (!isUpdated) return
 
     return this.listService.getUserListsKeys(user)
   }
@@ -176,7 +204,7 @@ export class ListController {
   async getList(@Query() query: GetListByUsernameDTO) {
     // Validate user
     const user = await this.clerkService.getUserByUsername(query)
-    if (!user) return []
+    if (!user) return undefined
 
     const payload = GetList.parse({
       ...query,
