@@ -6,8 +6,8 @@ import {
   Get,
   Logger,
   Param,
+  Patch,
   Post,
-  Put,
   Query,
   UsePipes,
 } from '@nestjs/common'
@@ -15,9 +15,9 @@ import {ApiOperation, ApiResponse, ApiTags} from '@nestjs/swagger'
 import {
   DefaultListTypeInfo,
   List,
-  ListTypeInfo,
-  ListType,
   ListData,
+  ListType,
+  ListTypeInfo,
 } from 'src/core/types/shelvd.types'
 import {z} from 'zod'
 import {
@@ -59,26 +59,46 @@ export class ListController {
     private readonly clerkService: ClerkService,
   ) {}
 
-  @Get('/slugs')
+  //#endregion  //*======== GENERICS ===========
+  @Patch(`/update/details`)
   @ApiOperation({
-    summary: 'Query for the bare minimum info about user ListData',
+    summary: 'Update a specific ListData (w/ limitations for "core")',
   })
   @ApiResponse({
     status: '2XX',
-    description:
-      'Returns a record keyed by ListType with array of partial ListData info',
+    description: 'Returns array of updated ListData',
   })
-  async getListSlugsByType(
-    @Query() query: GetUserByUsernameDTO,
-  ): Promise<ListTypeInfo> {
+  async updateListDetails(
+    @Body() body: UpdateListByTypeDTO,
+  ): Promise<ListData[]> {
     // Validate user
-    const user = await this.clerkService.getUserByUsername(query)
-    if (!user) return DefaultListTypeInfo
+    const user = await this.clerkService.client.users.getUser(body.userId)
+    if (!user) return []
 
-    return this.listService.getUserListsKeys(user)
+    Logger.log(`ListController/updateCreatedList`, user, body)
+
+    return this.listService.updateListDetails(body)
   }
 
-  @Post('/book')
+  @Patch(`/update/books`)
+  @ApiOperation({
+    summary: 'Update a specific ListData.bookKeys',
+  })
+  @ApiResponse({
+    status: '2XX',
+    description: 'Returns array of updated ListData',
+  })
+  async updateListBooks(@Body() body: UpdateListBooksDTO): Promise<ListData[]> {
+    // Validate user
+    const user = await this.clerkService.client.users.getUser(body.userId)
+    if (!user) return []
+
+    Logger.log(`ListController/updateListBooks`, user, body)
+
+    return this.listService.updateListBooks(body)
+  }
+
+  @Patch('/update/book')
   @ApiOperation({
     summary: 'Bulk insert/delete a book key across all owned lists',
   })
@@ -104,59 +124,7 @@ export class ListController {
     return this.listService.getUserListsKeys(user)
   }
 
-  @Post('/create')
-  @ApiOperation({summary: 'Create a ListData'})
-  @ApiResponse({
-    status: '2XX',
-    description: 'Returns array of created Lists',
-  })
-  async createList(@Body() body: CreateListDTO) {
-    // Validate user
-    const userId = body.creator?.key ?? ''
-    const user = await this.clerkService.client.users.getUser(userId)
-    if (!user) return []
-
-    return this.listService.createList(body)
-  }
-
-  //#endregion  //*======== GENERICS ===========
-  @Put(`/:type/update/details`)
-  @ApiOperation({
-    summary: 'Update a specific ListData (w/ limitations for "core")',
-  })
-  @ApiResponse({
-    status: '2XX',
-    description: 'Returns array of updated ListData',
-  })
-  async updateList(@Body() body: UpdateListByTypeDTO): Promise<ListData[]> {
-    // Validate user
-    const user = await this.clerkService.client.users.getUser(body.userId)
-    if (!user) return []
-
-    Logger.log(`ListController/updateCreatedList`, user, body)
-
-    return this.listService.updateListDetails(body)
-  }
-
-  @Put(`/:type/update/books`)
-  @ApiOperation({
-    summary: 'Update a specific ListData.bookKeys',
-  })
-  @ApiResponse({
-    status: '2XX',
-    description: 'Returns array of updated ListData',
-  })
-  async updateListBooks(@Body() body: UpdateListBooksDTO): Promise<ListData[]> {
-    // Validate user
-    const user = await this.clerkService.client.users.getUser(body.userId)
-    if (!user) return []
-
-    Logger.log(`ListController/updateListBooks`, user, body)
-
-    return this.listService.updateListBooks(body)
-  }
-
-  @Delete(`/:type/delete`)
+  @Delete(`/delete`)
   @ApiOperation({summary: 'Delete a specific ListData (except "core")'})
   @ApiResponse({
     status: '2XX',
@@ -172,6 +140,64 @@ export class ListController {
     Logger.log(`ListController/deleteCreatedList`, user, body)
 
     return this.listService.deleteList(body)
+  }
+
+  @Post('/create')
+  @ApiOperation({summary: 'Create a ListData'})
+  @ApiResponse({
+    status: '2XX',
+    description: 'Returns array of created Lists',
+  })
+  async createList(@Body() body: CreateListDTO) {
+    // Validate user
+    const userId = body.creator?.key ?? ''
+    const user = await this.clerkService.client.users.getUser(userId)
+    if (!user) return []
+
+    return this.listService.createList(body)
+  }
+
+  @Post('/slugs/availability')
+  // @ApiOperation({
+  //   // summary: 'Query for the bare minimum info about user ListData',
+  // })
+  // @ApiResponse({
+  //   status: '2XX',
+  //   description:
+  //     'Returns a record keyed by ListType with array of partial ListData info',
+  // })
+  async getListSlugAvailability(
+    @Body() body: GetListByUsernameDTO,
+  ): Promise<boolean> {
+    // Validate user
+    const username = body.username ?? ''
+    const user = await this.clerkService.getUserByUsername({username})
+    if (!user) return false
+
+    const payload = GetList.parse({
+      userId: user.id,
+      ...body,
+    })
+    return this.listService.getUserListsKeyAvailability(payload)
+  }
+
+  @Get('/slugs')
+  @ApiOperation({
+    summary: 'Query for the bare minimum info about user ListData',
+  })
+  @ApiResponse({
+    status: '2XX',
+    description:
+      'Returns a record keyed by ListType with array of partial ListData info',
+  })
+  async getListSlugsByType(
+    @Query() query: GetUserByUsernameDTO,
+  ): Promise<ListTypeInfo> {
+    // Validate user
+    const user = await this.clerkService.getUserByUsername(query)
+    if (!user) return DefaultListTypeInfo
+
+    return this.listService.getUserListsKeys(user)
   }
 
   @Get('/:type/all')
@@ -195,7 +221,7 @@ export class ListController {
     return this.listService.getUserLists(payload)
   }
 
-  @Get(`/:type`)
+  @Get(`/`)
   @ApiOperation({summary: 'Query for a specific ListData'})
   @ApiResponse({
     status: '2XX',

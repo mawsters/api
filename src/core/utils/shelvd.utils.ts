@@ -1,4 +1,4 @@
-import {BookSource, List} from '../types/shelvd.types'
+import {BookSource, List, ListData} from '../types/shelvd.types'
 
 export class ShelvdUtils {
   static source: BookSource = 'shelvd'
@@ -28,6 +28,15 @@ export class ShelvdUtils {
       return list
     })
     return lists
+  }
+
+  static sortLists = (lists: ListData[]): ListData[] => {
+    const orderCore = ['reading', 'to-read', 'completed', 'dnf']
+    return lists.sort((a, b) =>
+      orderCore.includes(a.key)
+        ? orderCore.indexOf(a.key) - orderCore.indexOf(b.key)
+        : a.key.localeCompare(b.key, 'en', {numeric: true}),
+    )
   }
 
   static printAuthorName = (

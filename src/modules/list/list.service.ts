@@ -105,7 +105,7 @@ export class ListService {
     dbLists: z.infer<typeof schema.insertCoreListSchema>[],
   ): ListData[] {
     if (!dbLists.length) return []
-    return dbLists.map(this.parseList) as ListData[]
+    return ShelvdUtils.sortLists(dbLists.map(this.parseList)) as ListData[]
   }
   //#endregion  //*======== UTILS ===========
 
@@ -173,9 +173,18 @@ export class ListService {
           }),
       )
 
-      listKeyRecord[type] = lists
+      listKeyRecord[type] = ShelvdUtils.sortLists(lists)
     }
     return listKeyRecord
+  }
+
+  getUserListsKeyAvailability = async (
+    payload: GetListDTO,
+  ): Promise<boolean> => {
+    const list = await this.getList(payload)
+    const isAvailable = !list
+    Logger.log({breakpoint: '[list.service.ts:186]'}, {list, isAvailable})
+    return isAvailable
   }
   //#endregion  //*======== GETTERS ===========
 
