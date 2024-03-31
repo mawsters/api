@@ -1,4 +1,4 @@
-import {ZodValidationPipe, createZodDto} from '@anatine/zod-nestjs'
+import { ZodValidationPipe, createZodDto } from '@anatine/zod-nestjs'
 import {
   Body,
   Controller,
@@ -11,7 +11,7 @@ import {
   Query,
   UsePipes,
 } from '@nestjs/common'
-import {ApiOperation, ApiResponse, ApiTags} from '@nestjs/swagger'
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import {
   DefaultListTypeInfo,
   List,
@@ -19,7 +19,7 @@ import {
   ListType,
   ListTypeInfo,
 } from 'src/core/types/shelvd.types'
-import {z} from 'zod'
+import { z } from 'zod'
 import {
   ClerkService,
   GetUserByUsername,
@@ -36,19 +36,25 @@ import {
   ListService,
   UpdateListBooksDTO,
   UpdateListByTypeDTO,
+  UpdateListFollows,
 } from './list.service'
 
 const GetListByType = z.object({
   type: ListType,
 })
-class GetListByTypeDTO extends createZodDto(GetListByType) {}
+class GetListByTypeDTO extends createZodDto(GetListByType) { }
 
 export const GetListByUsername = GetUserByUsername.merge(
-  GetCreatedList.omit({userId: true}).extend({
-    type: ListType,
+  GetCreatedList.omit({ userId: true }).extend({
+    type: ListType.exclude(['following']),
   }),
 )
-export class GetListByUsernameDTO extends createZodDto(GetListByUsername) {}
+export class GetListByUsernameDTO extends createZodDto(GetListByUsername) { }
+
+export const UpdateFollowList = GetUserByUsername.merge(
+  UpdateListFollows.omit({ userId: true }),
+)
+export class UpdateFollowListDTO extends createZodDto(UpdateFollowList) { }
 
 @Controller('list')
 @ApiTags('list')
@@ -57,7 +63,7 @@ export class ListController {
   constructor(
     private readonly listService: ListService,
     private readonly clerkService: ClerkService,
-  ) {}
+  ) { }
 
   //#endregion  //*======== GENERICS ===========
   @Patch(`/update/details`)
@@ -125,14 +131,14 @@ export class ListController {
   }
 
   @Delete(`/delete`)
-  @ApiOperation({summary: 'Delete a specific ListData (except "core")'})
+  @ApiOperation({ summary: 'Delete a specific ListData (except "core")' })
   @ApiResponse({
     status: '2XX',
     description: 'Returns array of deleted ListData keys',
   })
   async deleteList(
     @Body() body: DeleteListByTypeDTO,
-  ): Promise<{key: List['key']}[]> {
+  ): Promise<{ key: List['key'] }[]> {
     // Validate user
     const user = await this.clerkService.client.users.getUser(body.userId)
     if (!user) return []
@@ -143,7 +149,7 @@ export class ListController {
   }
 
   @Post('/create')
-  @ApiOperation({summary: 'Create a ListData'})
+  @ApiOperation({ summary: 'Create a ListData' })
   @ApiResponse({
     status: '2XX',
     description: 'Returns array of created Lists',
@@ -156,6 +162,39 @@ export class ListController {
 
     return this.listService.createList(body)
   }
+  @Post('/follow')
+  // @ApiOperation({ summary: 'Create a ListData' })
+  // @ApiResponse({
+  //   status: '2XX',
+  //   description: 'Returns array of created Lists',
+  // })
+  async updateFollowList(@Body() body: UpdateFollowListDTO) {
+    // Validate user
+    const username = body.username ?? ''
+    const user = await this.clerkService.getUserByUsername({ username })
+    if (!user) return []
+
+    const payload = UpdateListFollows.parse({
+      userId: user.id,
+      listKeys: body?.listKeys ?? [],
+    })
+    return this.listService.updateListFollows(payload)
+  }
+
+  // @Post('/follow')
+  // @ApiOperation({summary: 'Create a ListData'})
+  // @ApiResponse({
+  //   status: '2XX',
+  //   description: 'Returns array of created Lists',
+  // })
+  // async createList(@Body() body: CreateListDTO) {
+  //   // Validate user
+  //   const userId = body.creator?.key ?? ''
+  //   const user = await this.clerkService.client.users.getUser(userId)
+  //   if (!user) return []
+
+  //   return this.listService.createList(body)
+  // }
 
   @Post('/slugs/availability')
   // @ApiOperation({
@@ -171,7 +210,7 @@ export class ListController {
   ): Promise<boolean> {
     // Validate user
     const username = body.username ?? ''
-    const user = await this.clerkService.getUserByUsername({username})
+    const user = await this.clerkService.getUserByUsername({ username })
     if (!user) return false
 
     const payload = GetList.parse({
@@ -201,7 +240,7 @@ export class ListController {
   }
 
   @Get('/:type/all')
-  @ApiOperation({summary: 'Query for all user ListData of type'})
+  @ApiOperation({ summary: 'Query for all user ListData of type' })
   @ApiResponse({
     status: '2XX',
     description: 'Returns array of user-associated ListData',
@@ -222,7 +261,7 @@ export class ListController {
   }
 
   @Get(`/`)
-  @ApiOperation({summary: 'Query for a specific ListData'})
+  @ApiOperation({ summary: 'Query for a specific ListData' })
   @ApiResponse({
     status: '2XX',
     description: 'Returns the ListData only if matched',
