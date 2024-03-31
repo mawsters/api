@@ -8,12 +8,10 @@
 <br/>
 
 <p align="center">
-  <img src="https://github.com/crystalcheong/shelvd-api/assets/65748007/84f18f68-8343-45fa-8ddf-f03c1ff7a2af" alt="Project Cover"
+  <img src="https://github.com/mawsters/api/assets/65748007/511c5a11-18c9-47a9-97eb-4224dbadbf7e" alt="Project Cover"
     width="960px"
   />
 </p>
-
-
 
 ---
 
