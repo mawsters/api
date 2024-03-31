@@ -1,5 +1,5 @@
 {
-  "id": "a11fb901-17d3-45b2-a2e4-31138672e60c",
+  "id": "16925a4a-f1d3-4a77-b813-7eaca2f75204",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "5",
   "dialect": "pg",
@@ -150,53 +150,14 @@
       "name": "following_lists",
       "schema": "",
       "columns": {
-        "creatorKey": {
-          "name": "creatorKey",
+        "userId": {
+          "name": "userId",
           "type": "varchar(256)",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
-        "key": {
-          "name": "key",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "slug": {
-          "name": "slug",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'shelvd'"
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "''"
-        },
-        "booksCount": {
-          "name": "booksCount",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": 0
-        },
-        "bookKeys": {
-          "name": "bookKeys",
+        "listKeys": {
+          "name": "listKeys",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
@@ -205,17 +166,14 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "following_lists_slug_creatorKey_pk": {
-          "name": "following_lists_slug_creatorKey_pk",
-          "columns": ["slug", "creatorKey"]
-        },
-        "slug_creatorKey": {
-          "name": "slug_creatorKey",
-          "columns": ["slug", "creatorKey"]
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "following_lists_userId_unique": {
+          "name": "following_lists_userId_unique",
+          "nullsNotDistinct": false,
+          "columns": ["userId"]
         }
-      },
-      "uniqueConstraints": {}
+      }
     }
   },
   "enums": {},

@@ -52,18 +52,8 @@ export const createdLists = pgTable('created_lists', listSchema, (table) => ({
 }))
 export const insertCreatedListSchema = createInsertSchema(createdLists)
 
-export const followingLists = pgTable(
-  'following_lists',
-  {
-    followers: varchar('creatorKey', {length: 256}).array().default([]),
-    ...listSchema,
-  },
-  (table) => ({
-    pk: primaryKey({columns: [table.slug, table.creatorKey]}),
-    pkWithCustomName: primaryKey({
-      name: 'slug_creatorKey',
-      columns: [table.slug, table.creatorKey],
-    }),
-  }),
-)
+export const followingLists = pgTable('following_lists', {
+  userId: varchar('userId', {length: 256}).notNull().unique().primaryKey(),
+  listKeys: json('listKeys').$type<string[]>().default([]),
+})
 export const insertFollowingListSchema = createInsertSchema(followingLists)

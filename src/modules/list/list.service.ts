@@ -41,7 +41,7 @@ export class UpdateListBooksDTO extends createZodDto(UpdateListBooks) {}
 export const GetList = z.object({
   userId: z.string().min(1).trim(),
   key: z.string().min(1).trim(),
-  type: ListType,
+  type: ListType.exclude(['following']),
 })
 export class GetListDTO extends createZodDto(GetList) {}
 
@@ -50,6 +50,12 @@ export const GetLists = z.object({
   type: ListType,
 })
 export class GetListsDTO extends createZodDto(GetLists) {}
+
+export const UpdateListFollows = z.object({
+  userId: z.string().min(1).trim(),
+  listKeys: z.string().array().default([]).transform(getUniqueArray),
+})
+export class UpdateListFollowsDTO extends createZodDto(UpdateListFollows) {}
 
 const KeyChanges = z.object({
   prev: z.string().array().default([]).transform(getUniqueArray),
@@ -114,9 +120,7 @@ export class ListService {
     const db =
       payload.type === 'created'
         ? this.db.query.createdLists
-        : payload.type === 'following'
-          ? this.db.query.followingLists
-          : this.db.query.coreLists
+        : this.db.query.coreLists
 
     const dbList = await db.findFirst({
       where: (list, {eq, and}) =>
@@ -142,7 +146,56 @@ export class ListService {
           : this.db.query.coreLists
 
     const creatorKey = payload.userId
-    let lists = await db.findMany({
+
+    let lists: ListData[] = []
+
+    if (payload.type === 'following') {
+      let userFollowing = await this.db.query.followingLists.findFirst({
+        where: (list, {eq}) => eq(list.userId, creatorKey),
+      })
+
+      const isInitRequired = !userFollowing
+      if (isInitRequired)
+        userFollowing =
+          (await this.createFollowLists(payload))?.[0] ?? userFollowing
+
+      if (!userFollowing || !(userFollowing?.listKeys ?? []).length)
+        return lists
+
+      for (const key of userFollowing.listKeys) {
+        const delimiter = '/'
+        const followListKey = key.split(delimiter)
+
+        const isValidKey = followListKey.length === 2
+        if (!isValidKey) continue
+
+        const [creatorKey, listKey] = followListKey
+
+        // get list by key from db
+        const list = await this.getList(
+          GetList.parse({
+            userId: creatorKey,
+            key: listKey,
+            type: ListType.enum.created,
+          }),
+        )
+
+        Logger.log(
+          {breakpoint: '[list.service.ts:166]/getUserLists/following'},
+          {
+            followListKey,
+            list,
+          },
+        )
+
+        if (!list) continue
+        lists.push(list)
+      }
+
+      return lists
+    }
+
+    lists = await db.findMany({
       where: (list, {eq}) => eq(list.creatorKey, creatorKey),
     })
 
@@ -233,9 +286,75 @@ export class ListService {
     )
     return lists
   }
+
+  createFollowLists = async (payload: GetListsDTO) => {
+    const userId = payload.userId
+    if (!userId) return []
+
+    return await this.db
+      .insert(schema.followingLists)
+      .values(
+        schema.insertFollowingListSchema.parse({
+          userId,
+        }) as any,
+      )
+      .returning()
+  }
   //#endregion  //*======== CREATORS ===========
 
   //#endregion  //*======== UPDATERS ===========
+  updateListFollows = async (payload: UpdateListFollowsDTO) => {
+    // verify list keys iff not empty
+    const unverifiedKeys = payload?.listKeys ?? []
+    const verifiedKeys: Set<string> = new Set<string>()
+    const invalidKeys: Set<string> = new Set<string>()
+
+    const lists: ListData[] = []
+
+    for (const key of unverifiedKeys) {
+      const delimiter = '/'
+      const followListKey = key.split(delimiter)
+
+      const isValidKey = followListKey.length === 2
+      if (!isValidKey) {
+        invalidKeys.add(key)
+        continue
+      }
+
+      const [creatorKey, listKey] = followListKey
+
+      // get list by key from db
+      const list = await this.getList(
+        GetList.parse({
+          userId: creatorKey,
+          key: listKey,
+          type: ListType.enum.created,
+        }),
+      )
+      if (!list) {
+        invalidKeys.add(key)
+        continue
+      }
+
+      verifiedKeys.add(key)
+      lists.push(list)
+    }
+
+    const dbSchema = this.typeSchemaMap['following']
+    const updatedListFollows = schema.insertFollowingListSchema.parse({
+      ...payload,
+      listKeys: Array.from(verifiedKeys),
+    })
+
+    await this.db
+      .update(dbSchema)
+      .set(updatedListFollows as any)
+      .where(eq(dbSchema.userId, payload.userId))
+      .returning()
+
+    return lists
+  }
+
   updateListDetails = async (
     payload: UpdateListByTypeDTO,
   ): Promise<ListData[]> => {
@@ -252,10 +371,11 @@ export class ListService {
     const isCreator = payload.userId === list.creator.key
     if (!isCreator) return []
 
+    const creatorKey = list?.creator?.key ?? payload.userId
     const updatedList = schema.insertCreatedListSchema.parse({
       ...list,
       ...payload.data,
-      creatorKey: list?.creator?.key ?? payload.userId,
+      creatorKey,
     })
 
     const lists: ListData[] = this.parseLists(
@@ -270,6 +390,56 @@ export class ListService {
         )
         .returning(),
     )
+
+    // Logger.log({ breakpoint: '[list.service.ts:394]/updateListDetails' }, { lists })
+
+    // // update follow lists
+    // const followListKey = `${creatorKey}/${list.key}`
+    // const updatedFollowListKey = `${creatorKey}/${updatedList.key}`
+
+    // // const averagePrice = this.db
+    // //   .$with('following_lists')
+    // //   .as(
+    // //     this.db
+    // //       .select({value: sql`avg(${products.price})`.as('value')})
+    // //       .from(this.typeSchemaMap['following']),
+    // //   )
+
+    // // const following = this.typeSchemaMap['following']
+
+    // const listFollowers = await this.db.query.followingLists.findMany({
+    //   where: (follow) => arrayContains(follow.listKeys, [followListKey]),
+    // })
+
+    // // const listFollowers = this.db.$with('list_followers').as(
+    // //   this.db
+    // //     .select()
+    // //     .from(following)
+    // //     .where(arrayContains(following.listKeys, [followListKey])),
+    // // )
+
+    // // await this.db.with(listFollowers)
+    // //   .update()
+    // // const result = await this.db.with(listFollowers).select().from(listFollowers)
+
+    // Logger.log(
+    //   { breakpoint: '[list.service.ts:387]/updateListDetails' },
+    //   { listFollowers },
+    // )
+
+    // // if(!listFollowers.)
+    // // await this.db
+    // // .update(this.typeSchemaMap['following'])
+    // // .set({
+    // //   listKeys:
+    // // })
+    // // const listKeys: string[] = userFollowing.listKeys ?? []
+    // // if (!listKeys.length) return lists
+
+    // // lists = await this.db.query.createdLists.findMany({
+    // //   where: (list, { inArray }) => inArray(list.key, listKeys),
+    // // })
+
     return lists
   }
   //#endregion  //*======== UPDATERS ===========

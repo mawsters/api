@@ -36,6 +36,7 @@ import {
   ListService,
   UpdateListBooksDTO,
   UpdateListByTypeDTO,
+  UpdateListFollows,
 } from './list.service'
 
 const GetListByType = z.object({
@@ -45,10 +46,15 @@ class GetListByTypeDTO extends createZodDto(GetListByType) {}
 
 export const GetListByUsername = GetUserByUsername.merge(
   GetCreatedList.omit({userId: true}).extend({
-    type: ListType,
+    type: ListType.exclude(['following']),
   }),
 )
 export class GetListByUsernameDTO extends createZodDto(GetListByUsername) {}
+
+export const UpdateFollowList = GetUserByUsername.merge(
+  UpdateListFollows.omit({userId: true}),
+)
+export class UpdateFollowListDTO extends createZodDto(UpdateFollowList) {}
 
 @Controller('list')
 @ApiTags('list')
@@ -156,6 +162,39 @@ export class ListController {
 
     return this.listService.createList(body)
   }
+  @Post('/follow')
+  // @ApiOperation({ summary: 'Create a ListData' })
+  // @ApiResponse({
+  //   status: '2XX',
+  //   description: 'Returns array of created Lists',
+  // })
+  async updateFollowList(@Body() body: UpdateFollowListDTO) {
+    // Validate user
+    const username = body.username ?? ''
+    const user = await this.clerkService.getUserByUsername({username})
+    if (!user) return []
+
+    const payload = UpdateListFollows.parse({
+      userId: user.id,
+      listKeys: body?.listKeys ?? [],
+    })
+    return this.listService.updateListFollows(payload)
+  }
+
+  // @Post('/follow')
+  // @ApiOperation({summary: 'Create a ListData'})
+  // @ApiResponse({
+  //   status: '2XX',
+  //   description: 'Returns array of created Lists',
+  // })
+  // async createList(@Body() body: CreateListDTO) {
+  //   // Validate user
+  //   const userId = body.creator?.key ?? ''
+  //   const user = await this.clerkService.client.users.getUser(userId)
+  //   if (!user) return []
+
+  //   return this.listService.createList(body)
+  // }
 
   @Post('/slugs/availability')
   // @ApiOperation({
