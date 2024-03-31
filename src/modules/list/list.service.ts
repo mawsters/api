@@ -1,9 +1,9 @@
-import {createZodDto} from '@anatine/zod-nestjs'
-import {User} from '@clerk/clerk-sdk-node'
-import {Inject, Injectable, Logger} from '@nestjs/common'
-import {and, eq} from 'drizzle-orm'
-import {PostgresJsDatabase} from 'drizzle-orm/postgres-js'
-import {DRIZZLE_ORM} from 'src/core/constants/db.constants'
+import { createZodDto } from '@anatine/zod-nestjs'
+import { User } from '@clerk/clerk-sdk-node'
+import { Inject, Injectable, Logger } from '@nestjs/common'
+import { and, eq } from 'drizzle-orm'
+import { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import { DRIZZLE_ORM } from 'src/core/constants/db.constants'
 import {
   BookSource,
   DefaultListTypeInfo,
@@ -13,43 +13,49 @@ import {
   ListType,
   ListTypeInfo,
 } from 'src/core/types/shelvd.types'
-import {getUniqueArray, getXorArray, getXorArrays} from 'src/core/utils/helpers'
-import {ShelvdUtils} from 'src/core/utils/shelvd.utils'
-import {z} from 'zod'
+import { getUniqueArray, getXorArray, getXorArrays } from 'src/core/utils/helpers'
+import { ShelvdUtils } from 'src/core/utils/shelvd.utils'
+import { z } from 'zod'
 import * as schema from '../drizzle/schema'
 
 export const CreateList = ListData
-export class CreateListDTO extends createZodDto(CreateList) {}
+export class CreateListDTO extends createZodDto(CreateList) { }
 
 export const GetCreatedList = z.object({
   userId: z.string().min(1).trim(),
   key: z.string().min(1).trim(),
 })
-export class GetCreatedListDTO extends createZodDto(GetCreatedList) {}
+export class GetCreatedListDTO extends createZodDto(GetCreatedList) { }
 
 export const DeleteListByType = GetCreatedList.extend({
   type: ListType,
 })
-export class DeleteListByTypeDTO extends createZodDto(DeleteListByType) {}
+export class DeleteListByTypeDTO extends createZodDto(DeleteListByType) { }
 
 export const UpdateListBooks = DeleteListByType.extend({
   addBookKeys: z.string().array().default([]).optional(),
   deleteBookKeys: z.string().array().default([]).optional(),
 })
-export class UpdateListBooksDTO extends createZodDto(UpdateListBooks) {}
+export class UpdateListBooksDTO extends createZodDto(UpdateListBooks) { }
 
 export const GetList = z.object({
   userId: z.string().min(1).trim(),
   key: z.string().min(1).trim(),
-  type: ListType,
+  type: ListType.exclude(['following']),
 })
-export class GetListDTO extends createZodDto(GetList) {}
+export class GetListDTO extends createZodDto(GetList) { }
 
 export const GetLists = z.object({
   userId: z.string().min(1).trim(),
   type: ListType,
 })
-export class GetListsDTO extends createZodDto(GetLists) {}
+export class GetListsDTO extends createZodDto(GetLists) { }
+
+export const UpdateListFollows = z.object({
+  userId: z.string().min(1).trim(),
+  listKeys: z.string().array().default([]).transform(getUniqueArray),
+})
+export class UpdateListFollowsDTO extends createZodDto(UpdateListFollows) { }
 
 const KeyChanges = z.object({
   prev: z.string().array().default([]).transform(getUniqueArray),
@@ -65,7 +71,7 @@ export const BulkUpdateListByBookKey = z.object({
 })
 export class BulkUpdateListByBookKeyDTO extends createZodDto(
   BulkUpdateListByBookKey,
-) {}
+) { }
 
 export const UpdateList = GetCreatedList.extend({
   data: CreateList.omit({
@@ -74,18 +80,18 @@ export const UpdateList = GetCreatedList.extend({
     booksCount: true,
   }).partial(),
 })
-export class UpdateListDTO extends createZodDto(UpdateList) {}
+export class UpdateListDTO extends createZodDto(UpdateList) { }
 
 export const UpdateListByType = UpdateList.extend({
   type: ListType,
 })
-export class UpdateListByTypeDTO extends createZodDto(UpdateListByType) {}
+export class UpdateListByTypeDTO extends createZodDto(UpdateListByType) { }
 
 @Injectable()
 export class ListService {
   constructor(
     @Inject(DRIZZLE_ORM) private db: PostgresJsDatabase<typeof schema>,
-  ) {}
+  ) { }
 
   private typeSchemaMap = {
     [ListType.enum.core]: schema.coreLists,
@@ -114,12 +120,10 @@ export class ListService {
     const db =
       payload.type === 'created'
         ? this.db.query.createdLists
-        : payload.type === 'following'
-          ? this.db.query.followingLists
-          : this.db.query.coreLists
+        : this.db.query.coreLists
 
     const dbList = await db.findFirst({
-      where: (list, {eq, and}) =>
+      where: (list, { eq, and }) =>
         and(eq(list.creatorKey, payload.userId), eq(list.key, payload.key)),
     })
 
@@ -142,8 +146,57 @@ export class ListService {
           : this.db.query.coreLists
 
     const creatorKey = payload.userId
-    let lists = await db.findMany({
-      where: (list, {eq}) => eq(list.creatorKey, creatorKey),
+
+    let lists: ListData[] = []
+
+    if (payload.type === 'following') {
+      let userFollowing = await this.db.query.followingLists.findFirst({
+        where: (list, { eq }) => eq(list.userId, creatorKey),
+      })
+
+      const isInitRequired = !userFollowing
+      if (isInitRequired)
+        userFollowing =
+          (await this.createFollowLists(payload))?.[0] ?? userFollowing
+
+      if (!userFollowing || !(userFollowing?.listKeys ?? []).length)
+        return lists
+
+      for (const key of userFollowing.listKeys) {
+        const delimiter = '/'
+        const followListKey = key.split(delimiter)
+
+        const isValidKey = followListKey.length === 2
+        if (!isValidKey) continue
+
+        const [creatorKey, listKey] = followListKey
+
+        // get list by key from db
+        const list = await this.getList(
+          GetList.parse({
+            userId: creatorKey,
+            key: listKey,
+            type: ListType.enum.created,
+          }),
+        )
+
+        Logger.log(
+          { breakpoint: '[list.service.ts:166]/getUserLists/following' },
+          {
+            followListKey,
+            list,
+          },
+        )
+
+        if (!list) continue
+        lists.push(list)
+      }
+
+      return lists
+    }
+
+    lists = await db.findMany({
+      where: (list, { eq }) => eq(list.creatorKey, creatorKey),
     })
 
     // init iff is core
@@ -163,7 +216,7 @@ export class ListService {
       })
 
       const lists = (await this.getUserLists(payload)).map(
-        ({key, slug, booksCount, name, bookKeys}) =>
+        ({ key, slug, booksCount, name, bookKeys }) =>
           ListInfo.parse({
             key,
             slug,
@@ -183,7 +236,7 @@ export class ListService {
   ): Promise<boolean> => {
     const list = await this.getList(payload)
     const isAvailable = !list
-    Logger.log({breakpoint: '[list.service.ts:186]'}, {list, isAvailable})
+    Logger.log({ breakpoint: '[list.service.ts:186]' }, { list, isAvailable })
     return isAvailable
   }
   //#endregion  //*======== GETTERS ===========
@@ -233,9 +286,75 @@ export class ListService {
     )
     return lists
   }
+
+  createFollowLists = async (payload: GetListsDTO) => {
+    const userId = payload.userId
+    if (!userId) return []
+
+    return await this.db
+      .insert(schema.followingLists)
+      .values(
+        schema.insertFollowingListSchema.parse({
+          userId,
+        }) as any,
+      )
+      .returning()
+  }
   //#endregion  //*======== CREATORS ===========
 
   //#endregion  //*======== UPDATERS ===========
+  updateListFollows = async (payload: UpdateListFollowsDTO) => {
+    // verify list keys iff not empty
+    const unverifiedKeys = payload?.listKeys ?? []
+    const verifiedKeys: Set<string> = new Set<string>()
+    const invalidKeys: Set<string> = new Set<string>()
+
+    const lists: ListData[] = []
+
+    for (const key of unverifiedKeys) {
+      const delimiter = '/'
+      const followListKey = key.split(delimiter)
+
+      const isValidKey = followListKey.length === 2
+      if (!isValidKey) {
+        invalidKeys.add(key)
+        continue
+      }
+
+      const [creatorKey, listKey] = followListKey
+
+      // get list by key from db
+      const list = await this.getList(
+        GetList.parse({
+          userId: creatorKey,
+          key: listKey,
+          type: ListType.enum.created,
+        }),
+      )
+      if (!list) {
+        invalidKeys.add(key)
+        continue
+      }
+
+      verifiedKeys.add(key)
+      lists.push(list)
+    }
+
+    const dbSchema = this.typeSchemaMap['following']
+    const updatedListFollows = schema.insertFollowingListSchema.parse({
+      ...payload,
+      listKeys: Array.from(verifiedKeys),
+    })
+
+    await this.db
+      .update(dbSchema)
+      .set(updatedListFollows as any)
+      .where(eq(dbSchema.userId, payload.userId))
+      .returning()
+
+    return lists
+  }
+
   updateListDetails = async (
     payload: UpdateListByTypeDTO,
   ): Promise<ListData[]> => {
@@ -252,10 +371,11 @@ export class ListService {
     const isCreator = payload.userId === list.creator.key
     if (!isCreator) return []
 
+    const creatorKey = list?.creator?.key ?? payload.userId
     const updatedList = schema.insertCreatedListSchema.parse({
       ...list,
       ...payload.data,
-      creatorKey: list?.creator?.key ?? payload.userId,
+      creatorKey,
     })
 
     const lists: ListData[] = this.parseLists(
@@ -270,6 +390,56 @@ export class ListService {
         )
         .returning(),
     )
+
+    // Logger.log({ breakpoint: '[list.service.ts:394]/updateListDetails' }, { lists })
+
+    // // update follow lists
+    // const followListKey = `${creatorKey}/${list.key}`
+    // const updatedFollowListKey = `${creatorKey}/${updatedList.key}`
+
+    // // const averagePrice = this.db
+    // //   .$with('following_lists')
+    // //   .as(
+    // //     this.db
+    // //       .select({value: sql`avg(${products.price})`.as('value')})
+    // //       .from(this.typeSchemaMap['following']),
+    // //   )
+
+    // // const following = this.typeSchemaMap['following']
+
+    // const listFollowers = await this.db.query.followingLists.findMany({
+    //   where: (follow) => arrayContains(follow.listKeys, [followListKey]),
+    // })
+
+    // // const listFollowers = this.db.$with('list_followers').as(
+    // //   this.db
+    // //     .select()
+    // //     .from(following)
+    // //     .where(arrayContains(following.listKeys, [followListKey])),
+    // // )
+
+    // // await this.db.with(listFollowers)
+    // //   .update()
+    // // const result = await this.db.with(listFollowers).select().from(listFollowers)
+
+    // Logger.log(
+    //   { breakpoint: '[list.service.ts:387]/updateListDetails' },
+    //   { listFollowers },
+    // )
+
+    // // if(!listFollowers.)
+    // // await this.db
+    // // .update(this.typeSchemaMap['following'])
+    // // .set({
+    // //   listKeys:
+    // // })
+    // // const listKeys: string[] = userFollowing.listKeys ?? []
+    // // if (!listKeys.length) return lists
+
+    // // lists = await this.db.query.createdLists.findMany({
+    // //   where: (list, { inArray }) => inArray(list.key, listKeys),
+    // // })
+
     return lists
   }
   //#endregion  //*======== UPDATERS ===========
@@ -277,7 +447,7 @@ export class ListService {
   //#endregion  //*======== DELETERS ===========
   deleteList = async (
     payload: DeleteListByTypeDTO,
-  ): Promise<{key: List['key']}[]> => {
+  ): Promise<{ key: List['key'] }[]> => {
     //exit: can only delete created lists
     if (payload.type !== 'created') return []
 
@@ -331,7 +501,7 @@ export class ListService {
 
     // push to books (maintain book.key uniqueness)
     const listBooks: string[] = list.bookKeys ?? []
-    const {array1: addBooks, array2: removeBooks} = getXorArrays(
+    const { array1: addBooks, array2: removeBooks } = getXorArrays(
       payload.addBookKeys ?? [],
       payload.deleteBookKeys ?? [],
     )
@@ -383,7 +553,7 @@ export class ListService {
       let isUpdated = false
       if (!changes) return isUpdated
 
-      const {prev, curr} = changes
+      const { prev, curr } = changes
       const isSame = !getXorArray(prev, curr).length
       if (isSame) return isUpdated
 
@@ -397,7 +567,7 @@ export class ListService {
 
       // 1. remove from prev
       const prevLists = lists.filter(
-        ({key, bookKeys}) =>
+        ({ key, bookKeys }) =>
           prev.includes(key) && bookKeys.includes(payload.bookKey),
       )
       for (const prevList of prevLists) {
@@ -412,7 +582,7 @@ export class ListService {
       }
 
       // 2. add from curr
-      const currLists = lists.filter(({key}) => curr.includes(key))
+      const currLists = lists.filter(({ key }) => curr.includes(key))
       for (const currList of currLists) {
         const addPayload = UpdateListBooks.parse({
           userId: payload.userId,
