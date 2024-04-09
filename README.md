@@ -1,8 +1,11 @@
-### SC3040 Advanced Software Engineering Project — _Shelvd_
+### SC3040 Advanced Software Engineering Project — _📚 shelvd_
+
+**📚 shelvd** strives to enhance book discovery and foster a vibrant reader community through personalized recommendations, advanced search capabilities, and interactive forums, including virtual book clubs and reader reviews. This web app is the ultimate destination for book lovers seeking to explore new titles and connect with fellow enthusiasts in a dynamic, user-friendly environment.
 
 > REST API behind the social network for book lovers.<br/>
 >
-> - [Swagger](https://shelvd-api.onrender.com/api)
+> - [Website](https://shelvd.vercel.app)
+> - [API](https://shelvd-api.onrender.com/api)
 > - [Documentation](https://github.com/mawsters/docs)
 
 <br/>
@@ -29,7 +32,7 @@
   ```
 
 > [!IMPORTANT]
-> Required environment variables 
+> Required environment variables
 > - Duplicate `.env.example` to create `*.env` files
 >    - `.env` — The default file used to store your dev, production, and test variables
 >    - `.env.local` — Overrides all environment files except the test file (including the default .env file)
@@ -38,7 +41,7 @@
 - Preparing Postgres + Drizzle-ORM
 
   ```
-   bun run migrate 
+   bun run migrate
    bun run generate
   ```
 
